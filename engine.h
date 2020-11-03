@@ -1,90 +1,361 @@
+#pragma once
+
+#ifdef __linux__||__FreeBSD__				// include files for LIXUX
+
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
-#include <X11/keysymdef.h>
-#include <GL/glew.h>
 #include <GL/gl.h>
 #include <GL/glx.h>
 
+#elif _WIN32					// include files for WINDOWS
+
+#include <Windows.h>
+#include <gdiplus.h>
+#include <GL/gl.h>
+
+#endif 
+
+// default includes
+#include <thread>
+#include <chrono>
+#include <string>
 
 
 /* |---------------------------------------------------------------------------|
- * |   start   implementation of 2dVector                                      |
+ * |   start   implementation of 2D class                                      |
  * |---------------------------------------------------------------------------| */
-template <class T>
-struct v2d_generic
+template <typename type>
+	struct xd
+	{
+		type x, y;
+		xd() : x(0), y(0) {}
+		xd(type _x, type _y) : x(_x), y(_y) {}
+		xd(const xd& r) : x(r.x), y(r.y) {}
+		xd& operator = (const xd& r) = default;
+		xd operator + (const xd& r) const { return xd(this->x + r.x, this->y + r.y); }
+		xd operator - (const xd& r) const { return xd(this->x - r.x, this->y - r.y); }
+		xd& operator += (const xd& r) { this->x += r.x; this->y += r.y; return *this; }
+		xd& operator -= (const xd& r) { this->x -= r.x; this->y -= r.y; return *this; }
+		bool operator != (const xd& r) const { return (this->x != r.x || this->y != r.y); }
+		operator xd<int>() const { return { static_cast<int>(this->x), static_cast<int>(this->y) }; }
+		operator xd<float>() const { return { static_cast<float>(this->x), static_cast<float>(this->y) }; }
+	};
+	typedef xd<int> i2d;
+	typedef xd<float> f2d;
+/* |---------------------------------------------------------------------------|
+ * |   end     implementation of 2D class                                      |
+ * |---------------------------------------------------------------------------| */
+
+
+
+
+
+
+/* |---------------------------------------------------------------------------| *
+ * |   start of                   PICTURE AND PIXEL                            | *
+ * |---------------------------------------------------------------------------| */
+struct pixel
 {
-	T x = 0;
-	T y = 0;
-	v2d_generic() : x(0), y(0) {}
-	v2d_generic(T _x, T _y) : x(_x), y(_y) {}
-	v2d_generic(const v2d_generic& v) : x(v.x), y(v.y) {}
-	v2d_generic  operator +  (const v2d_generic& rhs) const { return v2d_generic(this->x + rhs.x, this->y + rhs.y); }
-	v2d_generic  operator -  (const v2d_generic& rhs) const { return v2d_generic(this->x - rhs.x, this->y - rhs.y); }
-	v2d_generic  operator *  (const T& rhs)           const { return v2d_generic(this->x * rhs, this->y * rhs); }
-	v2d_generic  operator *  (const v2d_generic& rhs) const { return v2d_generic(this->x * rhs.x, this->y * rhs.y); }
-	v2d_generic  operator /  (const T& rhs)           const { return v2d_generic(this->x / rhs, this->y / rhs); }
-	v2d_generic  operator /  (const v2d_generic& rhs) const { return v2d_generic(this->x / rhs.x, this->y / rhs.y); }
-	v2d_generic& operator += (const v2d_generic& rhs) { this->x += rhs.x; this->y += rhs.y; return *this; }
-	v2d_generic& operator -= (const v2d_generic& rhs) { this->x -= rhs.x; this->y -= rhs.y; return *this; }
-	v2d_generic& operator *= (const T& rhs) { this->x *= rhs; this->y *= rhs; return *this; }
-	v2d_generic& operator /= (const T& rhs) { this->x /= rhs; this->y /= rhs; return *this; }
-	bool operator == (const v2d_generic& rhs) const { return (this->x == rhs.x && this->y == rhs.y); }
-	bool operator != (const v2d_generic& rhs) const { return (this->x != rhs.x || this->y != rhs.y); }
-	operator v2d_generic<int32_t>() const { return { static_cast<int32_t>(this->x), static_cast<int32_t>(this->y) }; }
-	operator v2d_generic<float>() const { return { static_cast<float>(this->x), static_cast<float>(this->y) }; }
+	union {
+		uint32_t n = 0xFF000000;
+		struct {
+			uint8_t r; uint8_t g; uint8_t b; uint8_t a;
+		};
+	};
+	pixel ();
+	pixel ( uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha = 255 );
+};
+pixel::pixel ()
+{
+	r = 0; g = 255; b = 0; a = 255;
+}
+pixel::pixel ( uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha )
+{
+	r = red; g = green; b = blue; a = alpha;
+}
+
+class picture
+{
+	public:
+		void create_image ( uint32_t w, uint32_t h );
+		pixel* get_array ();
+	public:
+		uint32_t width, height;
+		pixel* pixel_array;
+};
+void picture::create_image ( uint32_t w, uint32_t h )
+{
+	width = w; height = h;
+	pixel_array = new pixel[width*height];
+	for ( uint32_t i=0 ; i<width*height ; i++ ) pixel_array[i] = pixel();
+
+	return;
+}
+pixel* picture::get_array ()
+{
+	return pixel_array;
+}
+/* |---------------------------------------------------------------------------|
+ * |   end  of                   PICTURE AND PIXEL                             |
+ * |---------------------------------------------------------------------------| */
+
+
+
+
+
+
+/* |---------------------------------------------------------------------------|
+ * |   start  Picture Engine decleration                                       |
+ * |---------------------------------------------------------------------------| */
+
+class picture_engine {
+	protected:
+	picture_engine();
+	~picture_engine();
+
+protected:
+	virtual bool onCreate() = 0;
+	virtual bool onUpdate() = 0;
+	virtual bool onDelete() = 0;
+
+private:
+	#ifdef __linux__||__FreeBSD__
+
+	#elif _WIN32
+	WNDCLASS wc;
+	HWND hwnd;
+	HDC glDeviceContext = nullptr;
+	HGLRC	glRenderContext = nullptr;
+	static LRESULT CALLBACK windowEventProgram(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+	GLuint glBuffer;
+	#endif
+
+
+private:
+	bool window_active;
+	int screen_width, screen_height, pixel_width, pixel_height;
+	std::wstring app_name;
+
+	picture* default_picture;
+
+protected:
+	bool create_window();
+	void picture_engine_thread();
+	bool start_opengl();
+
+protected:
+	bool draw(int x, int y);
+	bool draw(int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255);
+
+public:
+	bool construct(int sw = 320, int sh = 240, int pw = 2, int ph = 2);
+	bool start();
 };
 
-typedef v2d_generic<int32_t> vi2d;
-typedef v2d_generic<uint32_t> vu2d;
-typedef v2d_generic<float> vf2d;
-typedef v2d_generic<double> vd2d;
-/* |---------------------------------------------------------------------------|
- * |   end     implementation of 2dVector                                      |
- * |---------------------------------------------------------------------------| */
+
+///////////////////////////////////////
+picture_engine::picture_engine ()
+{
+	#ifdef __linux__||__FreeBSD__
+
+	#elif _WIN32
+
+	window_active = false;
+	wc = { 0 };
+	hwnd = NULL;
+	app_name = L"Failure";
+
+	#endif
+}
+picture_engine::~picture_engine()
+{
+	#ifdef __linux__||__FreeBSD__
+
+	
+
+	#elif _WIN32
+
+	delete default_picture;
+	
+	#endif
+}
+#ifdef __linux__||__FreeBSD__
+#elif _WIN32
+LRESULT CALLBACK picture_engine::windowEventProgram(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	static picture_engine* sge;
+	switch (uMsg)
+	{
+	case WM_CREATE:		sge = (picture_engine*)((LPCREATESTRUCT)lParam)->lpCreateParams;	return 0;
+	case WM_CLOSE:		sge->window_active = false;									return 0;
+	case WM_DESTROY:	PostQuitMessage(0);			return 0;
+	}
+	return DefWindowProc(hWnd, uMsg, wParam, lParam);
+}
+#endif
+bool picture_engine::create_window ()
+{
+	#ifdef __linux__||__FreeBSD__
 
 
+	
+	#elif _WIN32
 
+	// setting up the window class
+	wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+	wc.hCursor = LoadCursor(NULL, IDC_CROSS);
+	wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+	wc.hInstance = GetModuleHandle(nullptr);
+	wc.lpfnWndProc = windowEventProgram;
+	wc.cbClsExtra = NULL;
+	wc.cbWndExtra = NULL;
+	wc.lpszMenuName = L"Menu Name";
+	wc.hbrBackground = nullptr;
 
+	wc.lpszClassName = L"PictureEngine";
+	RegisterClass(&wc);
 
+	// Define window furniture
+	DWORD dwExStyle = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
+	DWORD dwStyle = WS_CAPTION | WS_SYSMENU | WS_VISIBLE;
+	RECT rWndRect = { 0, 0, (LONG)screen_width * (LONG)pixel_width, (LONG)screen_height * (LONG)pixel_height };
 
-/* |---------------------------------------------------------------------------|
- * |   start   implementation of Colour                                        |
- * |---------------------------------------------------------------------------| */
-struct colour {
-	float red;
-	float green;
-	float blue;
-	colour () { red = 0; green = 0; blue = 0; }
-	colour ( float r, float g, float b ) { red = r; green = g; blue = b; }
-};
+	// Keep client size as requested
+	AdjustWindowRectEx(&rWndRect, dwStyle, FALSE, dwExStyle);
 
-static const colour
-	GREY ( 0.75f, 0.75f, 0.75f ),
-	RED ( 1.0f, 0.0f, 0.0f ),
-	YELLOW ( 1.0f, 1.0f, 0.0f ),
-	GREEN ( 0.0f, 1.0f, 0.0f ),
-	CYAN ( 0.0f, 1.0f, 1.0f ),
-	BLUE ( 0.0f, 0.0f, 1.0f ),
-	MAGENTA ( 1.0f, 0.0f, 1.0f ),
-	WHITE ( 1.0f, 1.0f, 1.0f ),
-	BLACK ( 0.0f, 0.0f, 0.0f );
+	int width = rWndRect.right - rWndRect.left;
+	int height = rWndRect.bottom - rWndRect.top;
 
+	hwnd = CreateWindowEx(dwExStyle, L"PictureEngine", L"", dwStyle,
+		CW_USEDEFAULT, CW_USEDEFAULT, width, height, NULL, NULL, GetModuleHandle(nullptr), this);
 
-/* |---------------------------------------------------------------------------|
- * |   end     implementation of Colour                                        |
- * |---------------------------------------------------------------------------| */
+	#endif
+	return true;
+}
+void picture_engine::picture_engine_thread ()
+{
+	if ( !start_opengl() )
+		return;
+	
+	glEnable(GL_TEXTURE_2D);
+	#ifdef __linux__||__FreeBSD__
+	#elif _WIN32
+	glGenTextures(1, &glBuffer);
+	glBindTexture(GL_TEXTURE_2D, glBuffer);
+	#endif
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
 
+	if (!onCreate())
+		window_active = false;
 
+	auto tp1 = std::chrono::system_clock::now();
+	auto tp2 = std::chrono::system_clock::now();
 
+	while (window_active) {
+		tp2 = std::chrono::system_clock::now();
+		std::chrono::duration<float> elapsedTime = tp2 - tp1;
+		tp1 = tp2;
+		float fElapsedTime = elapsedTime.count();
+		if (!onUpdate())
+			window_active = false;
 
+		// start opengl test
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screen_width, screen_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, default_picture->get_array());
+		glBegin(GL_QUADS);
+		glTexCoord2f(0.0, 1.0); glVertex3f(-1.0f, -1.0f, 0.0f);
+		glTexCoord2f(0.0, 0.0); glVertex3f(-1.0f, 1.0f, 0.0f);
+		glTexCoord2f(1.0, 0.0); glVertex3f(1.0f, 1.0f, 0.0f);
+		glTexCoord2f(1.0, 1.0); glVertex3f(1.0f, -1.0f, 0.0f);
+		glEnd();
+		#ifdef __linux__||__FreeBSD__
+		#elif _WIN32
+		SwapBuffers(glDeviceContext);
 
+		wchar_t sTitle[256];
+		swprintf(sTitle, 256, L"%s - FPS: %3.2f", app_name.c_str(), 1.0f / fElapsedTime);
+		SetWindowText(hwnd, sTitle);
+		#endif
+	}
+	if (!onDelete())
+		return;
+	
+	#ifdef __linux__||__FreeBSD__
+	#elif _WIN32
+	PostMessage(hwnd, WM_DESTROY, 0, 0);
+	#endif
 
-/* |---------------------------------------------------------------------------|
- * |   start   DUMMY ENGINE decleration                                        |
- * |---------------------------------------------------------------------------| */
+}
+bool picture_engine::start_opengl ()
+{
+	#ifdef __linux__||__FreeBSD__
+
+	#elif _WIN32
+	glDeviceContext = GetDC(hwnd);
+	PIXELFORMATDESCRIPTOR pfd =
+	{
+		sizeof(PIXELFORMATDESCRIPTOR), 1,
+		PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
+		PFD_TYPE_RGBA, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		PFD_MAIN_PLANE, 0, 0, 0, 0
+	};
+
+	int pf = 0;
+	if (!(pf = ChoosePixelFormat(glDeviceContext, &pfd))) return false;
+	SetPixelFormat(glDeviceContext, pf, &pfd);
+
+	if (!(glRenderContext = wglCreateContext(glDeviceContext))) return false;
+	wglMakeCurrent(glDeviceContext, glRenderContext);
+
+	wglSwapInterval = (wglSwapInterval_t*)wglGetProcAddress("wglSwapIntervalEXT");
+	wglSwapInterval(0);
+
+	#endif
+
+	return true;
+}
+bool picture_engine::construct (int sw, int sh, int pw, int ph)
+{
+	screen_width = sw; screen_height = sh;
+	pixel_width = pw; pixel_height = ph;
+
+	default_picture = new picture;
+	default_picture->create_image(screen_width, screen_height);
+
+	return true;
+}
+bool picture_engine::start ()
+{
+	if (!create_window())
+		return false;
+	
+	window_active = true;
+	std::thread t = std::thread(&picture_engine::picture_engine_thread, this);
+
+	#ifdef __linux__||__FreeBSD__
+
+	#elif _WIN32
+
+	MSG msg;
+	while (GetMessage(&msg, NULL, 0, 0) > 0)
+	{
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
+	}
+
+	#endif
+
+	t.join();
+
+	return true;
+}
+
+/*********/
+
 class dummy_engine {
 	private:
-		vf2d window_size;
+		int window_width, window_height;
 
 		Display* display;
 		Window window;
@@ -93,6 +364,10 @@ class dummy_engine {
 		XEvent ev;
 		XSetWindowAttributes windowAttribs;
 		XVisualInfo* visual;
+		
+		GLuint glBuffer;
+		
+		picture* default_picture;
 
 	public:
 		dummy_engine ();
@@ -125,11 +400,17 @@ class dummy_engine {
 
 dummy_engine::dummy_engine ()
 {
-	window_size.x = 600;
-	window_size.y = 400;
+	window_width = 600;
+	window_height = 400;
+
+	picture* default_picture;
 }
 
 bool dummy_engine::prepare_engine () {
+	// for pictuew
+	default_picture = new picture;
+	default_picture->create_image(window_width, window_height);
+
 	// Open the display
 	display = XOpenDisplay(NULL);
 	screen = DefaultScreenOfDisplay(display);
@@ -160,7 +441,7 @@ bool dummy_engine::prepare_engine () {
 
 	// creating or setting up the window
 	// needs to be in another method
-	window = XCreateWindow(display, RootWindow(display, screenId), 0, 0, window_size.x, window_size.y, 0, visual->depth, InputOutput, visual->visual, CWBackPixel | CWColormap | CWBorderPixel | CWEventMask, &windowAttribs);
+	window = XCreateWindow(display, RootWindow(display, screenId), 0, 0, window_width, window_height, 0, visual->depth, InputOutput, visual->visual, CWBackPixel | CWColormap | CWBorderPixel | CWEventMask, &windowAttribs);
 
 	// Show the window
 	XClearWindow(display, window);
@@ -171,23 +452,13 @@ bool dummy_engine::prepare_engine () {
 
 void dummy_engine::update_by_user ()
 {
-	
-	gluOrtho2D ( 0.0f, window_size.x, 0.0f, window_size.y );
-	glBegin(GL_TRIANGLES);
-		glColor3f ( 0.0f, 0.5f, 0.0f ); glVertex3f ( 100.0f,  200.0f, 0.0f );
-		glColor3f ( 0.0f, 0.0f, 0.5f ); glVertex3f ( 50.0f, 100.0f, 0.0f );
-		glColor3f ( 0.5f, 0.0f, 0.0f ); glVertex3f (  0.0f, 50.0f, 0.0f );
-	glEnd();
-//	glBegin(GL_TRIANGLES);
-//		glColor3f ( 0.0f, 0.0f, 0.5f ); glVertex3f (  0.5f, -0.5f, 0.0f );
-//		glColor3f ( 0.0f, 0.5f, 0.0f ); glVertex3f (  0.5f,  0.5f, 0.0f );
-//		glColor3f ( 0.5f, 0.0f, 0.0f ); glVertex3f (  0.0f, -0.5f, 0.0f );
-//	glEnd();
-
-	glPointSize ( 10 );
-	glBegin ( GL_POINTS );
-		glColor3f ( 1.0f, 0.0f, 0.0f ); glVertex3i ( 200.0f, -400.0f, 0.0f );
-	glEnd();
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, window_width, window_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, default_picture->get_array());
+	glBegin(GL_QUADS);
+	glTexCoord2f(0.0, 1.0); glVertex3f(-1.0f, -1.0f, 0.0f);
+	glTexCoord2f(0.0, 0.0); glVertex3f(-1.0f, 1.0f, 0.0f);
+	glTexCoord2f(1.0, 0.0); glVertex3f(1.0f, 1.0f, 0.0f);
+	glTexCoord2f(1.0, 1.0); glVertex3f(1.0f, -1.0f, 0.0f);
+	glEnd();	
 }
 
 void dummy_engine::start ()
@@ -198,6 +469,14 @@ void dummy_engine::start ()
 	// Create GLX OpenGL context
 	GLXContext context = glXCreateContext(display, visual, NULL, GL_TRUE);
 	glXMakeCurrent(display, window, context);
+	// lets try to add some opengl things
+	glEnable(GL_TEXTURE_2D);
+	//glGenTextures(1, &glIuffer);
+	//glBindTexture(GL_TEXTURE_2D, glBuffer);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
+
 	while (true) {
 		while(XPending(display)) {
 			XNextEvent(display, &ev);
