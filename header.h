@@ -7,6 +7,7 @@
 #include <GL/gl.h>
 #include <GL/glx.h>
 
+#include <atomic>
 #include <chrono>
 #include <thread>
 
@@ -63,7 +64,7 @@ class engine {
 		bool delete_window ( );
 
 	protected: // temporary variable
-		bool running;
+		std::atomic<bool> running;
 };
 
 
@@ -119,6 +120,8 @@ void engine::engine_thread ()
 	auto right_time = std::chrono::system_clock::now ();
 	float frame_time;
 
+	glClearColor ( 0.0f, 0.0f, 0.0f, 1.0f );
+
 	while ( running ) {
 
 		auto right_time = std::chrono::system_clock::now ();
@@ -127,8 +130,12 @@ void engine::engine_thread ()
 		frame_time = frame_time_counter.count ();
 		
 		sync_hardware ();
+
+
+		// clear the canvous
+		glClear ( GL_COLOR_BUFFER_BIT );	
 		
-		// testing triangle
+		// draw on canvous
 		glBegin(GL_TRIANGLES);
 			glColor3f(  1.0f,  0.0f, 0.0f);
 			glVertex3f( 0.0f, -1.0f, 0.0f);
@@ -138,9 +145,7 @@ void engine::engine_thread ()
 			glVertex3f( 1.0f,  1.0f, 0.0f);
 		glEnd();	
 		
-		
-		//glClear ( GL_COLOR_BUFFER_BIT );	
-
+		// present the canvous
 		glXSwapBuffers ( display, window );
 
 		// rename the window
