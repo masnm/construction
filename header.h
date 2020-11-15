@@ -108,7 +108,13 @@ void engine::sync_hardware ()
 
 void engine::engine_thread ()
 {
-	// timeing FPS yeahh......
+	if ( !create_opengl() )
+		return ;
+
+	if ( !show_window() )
+		return ;
+
+	// timeing, FPS yeahh......
 	auto left_time = std::chrono::system_clock::now ();
 	auto right_time = std::chrono::system_clock::now ();
 	float frame_time;
@@ -121,7 +127,18 @@ void engine::engine_thread ()
 		frame_time = frame_time_counter.count ();
 		
 		sync_hardware ();
-
+		
+		// testing triangle
+	glBegin(GL_TRIANGLES);
+			glColor3f(  1.0f,  0.0f, 0.0f);
+			glVertex3f( 0.0f, -1.0f, 0.0f);
+			glColor3f(  0.0f,  1.0f, 0.0f);
+			glVertex3f(-1.0f,  1.0f, 0.0f);
+			glColor3f(  0.0f,  0.0f, 1.0f);
+			glVertex3f( 1.0f,  1.0f, 0.0f);
+		glEnd();	
+		
+		
 		glClear ( GL_COLOR_BUFFER_BIT );	
 
 		glXSwapBuffers ( display, window );
@@ -130,6 +147,11 @@ void engine::engine_thread ()
 		sprintf ( app_name, "%s %s %.0f", "Failure", "FPS : ", 1/frame_time );
 		XStoreName ( display, window, app_name );
 	}
+
+
+	if ( !delete_opengl() )
+		return ;
+
 }
 
 bool engine::start ()
@@ -137,20 +159,11 @@ bool engine::start ()
 	if ( !create_window() )
 		return false;
 
-	if ( !create_opengl() )
-		return false;
-
-	if ( !show_window() )
-		return false;
-
 	bool running = true;
 
 	// creating and executing the thread
 	std::thread t = std::thread ( &engine::engine_thread, this );
 	t.join();
-
-	if ( !delete_opengl() )
-		return false;
 
 	if ( !delete_window() )
 		return false;
@@ -161,6 +174,8 @@ bool engine::start ()
 
 bool engine::create_window ()
 {
+	XInitThreads ();
+
 	display = XOpenDisplay ( NULL );
 	if ( display == NULL ) {
 		std::cout << "Failed to open display" << std::endl;
@@ -229,12 +244,9 @@ bool engine::create_opengl ( )
 	// desabling v_sync // needs to do some shanges
 	glSwapIntervalEXT = nullptr;
 	glSwapIntervalEXT = (glSwapInterval_t*)glXGetProcAddress((unsigned char*)"glXSwapIntervalEXT");
-	if ( glSwapIntervalEXT == nullptr && !v_sync ) {
-		std::cout << "Failed to desable Vertical Sync" << std::endl;
-	}
-	if ( glSwapIntervalEXT != nullptr && !v_sync )
-		glSwapIntervalEXT ( display, window, 0 );
 
+	if (glSwapIntervalEXT != nullptr && !v_sync)
+		glSwapIntervalEXT ( display, window, 0);
 
 
 	delete_window_message = XInternAtom ( display, "WM_DELETE_WINDOW", False );
