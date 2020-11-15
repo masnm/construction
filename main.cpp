@@ -1,12 +1,26 @@
+//#include <iostream>
+//
+//#include "engine.h"
+//
+//int main(int argc, char** argv)
+//{
+//	dummy_engine inistance;
+//	if ( inistance.prepare_engine () )
+//		inistance.start ();
+//
+//	return 0;
+//}
+//
+//
 #include <iostream>
 
-#include "engine.h"
+#include "header.h"
 
-int main(int argc, char** argv)
+int main ()
 {
-	dummy_engine inistance;
-	if ( inistance.prepare_engine () )
-		inistance.start ();
+	engine ins;
+	if ( ins.create (120, 100, 4, 4, false ) )
+		ins.start();
 
 	return 0;
 }

@@ -7,13 +7,16 @@
 #include <GL/gl.h>
 #include <GL/glx.h>
 
-#include <iostream>
 #include <chrono>
+#include <thread>
+
+#include <iostream>
+
+
+typedef int(glSwapInterval_t)(Display* dpy, GLXDrawable drawable, int interval);
+static glSwapInterval_t* glSwapIntervalEXT;
 
 class engine {
-	private:
-		typedef int(glSwapInterval_t)(Display* dpy, GLXDrawable drawable, int interval);
-		static glSwapInterval_t* glSwapIntervalEXT;
 
 	private:
 		uint32_t screen_width;
@@ -33,7 +36,7 @@ class engine {
 		XEvent event;
 
 	protected:
-		Atom delete_window;
+		Atom delete_window_message;
 		XSetWindowAttributes window_attributes;
 		XVisualInfo* visual;
 
@@ -49,8 +52,18 @@ class engine {
 		bool create_opengl ( );
 
 	protected:
+		void sync_hardware ();
+		void engine_thread ();
+
+	protected:
+		bool show_window ( );
+
+	protected:
 		bool delete_opengl ( );
 		bool delete_window ( );
+
+	protected: // temporary variable
+		bool running;
 };
 
 
@@ -71,6 +84,54 @@ bool engine::create ( uint32_t Screen_Width, uint32_t Screen_Height, uint32_t Pi
 	return true;
 }
 
+void engine::sync_hardware ()
+{
+	while ( XPending ( display ) ) {
+
+		XNextEvent ( display, &event );
+
+		switch ( event.type ) {
+			case Expose:
+				XWindowAttributes attribs;
+				XGetWindowAttributes ( display, window, &attribs );
+				glViewport ( 0, 0, attribs.width, attribs.height );
+				std::cout << "Expose event fired" << std::endl;
+				break;
+			case ClientMessage:
+				if ( event.xclient.data.l[0] == delete_window_message ) {
+					running = false;
+				}
+				break;
+		}
+	}
+}
+
+void engine::engine_thread ()
+{
+	// timeing FPS yeahh......
+	auto left_time = std::chrono::system_clock::now ();
+	auto right_time = std::chrono::system_clock::now ();
+	float frame_time;
+
+	while ( running ) {
+
+		auto right_time = std::chrono::system_clock::now ();
+		std::chrono::duration<float> frame_time_counter = right_time - left_time;
+		left_time = right_time;
+		frame_time = frame_time_counter.count ();
+		
+		sync_hardware ();
+
+		glClear ( GL_COLOR_BUFFER_BIT );	
+
+		glXSwapBuffers ( display, window );
+
+		// rename the window
+		sprintf ( app_name, "%s %s %.0f", "Failure", "FPS : ", 1/frame_time );
+		XStoreName ( display, window, app_name );
+	}
+}
+
 bool engine::start ()
 {
 	if ( !create_window() )
@@ -79,29 +140,14 @@ bool engine::start ()
 	if ( !create_opengl() )
 		return false;
 
+	if ( !show_window() )
+		return false;
+
 	bool running = true;
-	while ( running ) {
-		while ( XPending ( display ) ) {
-			XNextEvent ( display, &event );
-			switch ( event.type ) {
-				case Expose:
-					XWindowAttributes attribs;
-					XGetWindowAttributes ( display, window, &attribs );
-					glViewPort ( 0, 0, attribs.width, attribs.height );
-					std::cout << "Expose event fired" << std::endl;
-					break;
-				case ClientMessage:
-					if ( ev.xclient.data.l[0] == delete_window ) {
-						running = false;
-					}
-					break;
-			}
-		}
 
-		glClear ( GL_COLOR_BUFFER_BIT );	
-
-		glXSwapBuffers ( display, window );
-	}
+	// creating and executing the thread
+	std::thread t = std::thread ( &engine::engine_thread, this );
+	t.join();
 
 	if ( !delete_opengl() )
 		return false;
@@ -120,7 +166,7 @@ bool engine::create_window ()
 		std::cout << "Failed to open display" << std::endl;
 		return false;
 	}
-	screen = DefaultScreen ( display );
+	screen = DefaultScreenOfDisplay ( display );
 	screen_id = DefaultScreen ( display );
 
 	GLint major_glx, minor_glx;
@@ -153,16 +199,16 @@ bool engine::create_window ()
 	if ( visual == NULL ) {
 		std::cout << "Failed to create correct visual window." << std::endl;
 		XCloseDisplay ( display );
-		return fasle;
+		return false;
 	}
 
 	// setting the window attributes
-	window_attributes.border_pixel = BlackPixel(display, screenId);
-	window_attributes.background_pixel = WhitePixel(display, screenId);
+	window_attributes.border_pixel = BlackPixel(display, screen_id);
+	window_attributes.background_pixel = WhitePixel(display, screen_id);
 	window_attributes.override_redirect = True;
-	window_attributes.colormap = XCreateColormap(display, RootWindow(display, screenId), visual->visual, AllocNone);
+	window_attributes.colormap = XCreateColormap(display, RootWindow(display, screen_id), visual->visual, AllocNone);
 	window_attributes.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | KeymapStateMask | PointerMotionMask | ButtonPressMask | ButtonReleaseMask | EnterWindowMask | LeaveWindowMask;
-	window = XCreateWindow(display, RootWindow(display, screenId), 0, 0, screen_width*pixel_width, screen_height*pixel_height, 0, visual->depth, InputOutput, visual->visual, CWBackPixel | CWColormap | CWBorderPixel | CWEventMask, &window_attributes);
+	window = XCreateWindow(display, RootWindow(display, screen_id), 0, 0, screen_width*pixel_width, screen_height*pixel_height, 0, visual->depth, InputOutput, visual->visual, CWBackPixel | CWColormap | CWBorderPixel | CWEventMask, &window_attributes);
 	
 	return true;
 }	
@@ -186,14 +232,22 @@ bool engine::create_opengl ( )
 	if ( glSwapIntervalEXT == nullptr && !v_sync ) {
 		std::cout << "Failed to desable Vertical Sync" << std::endl;
 	}
-	if ( glSwapInterval_t != nullptr && !v_sync )
-		glSwapIntervalEXT ( diaplay, window, 0 );
+	if ( glSwapIntervalEXT != nullptr && !v_sync )
+		glSwapIntervalEXT ( display, window, 0 );
 
 
 
-	delete_window = XInternAtom ( display, "WM_DELETE_WINDOW", False );
-	XSetWMProtocols ( display, window, &delete_window, 1 );
+	delete_window_message = XInternAtom ( display, "WM_DELETE_WINDOW", False );
+	XSetWMProtocols ( display, window, &delete_window_message, 1 );
 	
+
+	return true;
+}
+
+bool engine::show_window ()
+{
+	XClearWindow ( display, window );
+	XMapRaised ( display, window );
 
 	return true;
 }

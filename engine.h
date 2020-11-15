@@ -1,14 +1,15 @@
 #pragma once
 
 // X11 and openGL including
+#include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <GL/gl.h>
 #include <GL/glx.h>
 
-//typedef BOOL(WINAPI wglSwapInterval_t) (int interval);
-//static wglSwapInterval_t *wglSwapInterval;
-
+// for dysabling vsuync
+typedef int(glSwapInterval_t)(Display* dpy, GLXDrawable drawable, int interval);
+static glSwapInterval_t* glSwapIntervalEXT;
 
 // default includes
 #include <thread>
@@ -101,7 +102,6 @@ pixel* picture::get_array ()
 
 
 /*********/
-
 class dummy_engine {
 	private:
 		int window_width, window_height;
@@ -149,8 +149,8 @@ class dummy_engine {
 
 dummy_engine::dummy_engine ()
 {
-	window_width = 600;
-	window_height = 400;
+	window_width = 800;
+	window_height = 600;
 
 	picture* default_picture;
 }
@@ -180,14 +180,6 @@ bool dummy_engine::prepare_engine () {
 	};
 	visual = glXChooseVisual(display, screenId, glxAttribs);
 
-	// vsync
-	//glSwapIntervalEXT = nullptr;
-	//glSwapIntervalEXT = (glSwapInterval_t*)glXGetProcAddress((unsigned char*)"glXSwapIntervalEXT");
-	//if (glSwapIntervalEXT != nullptr && 0)
-	//	glSwapIntervalEXT( display, window, 1);
-	//GLXDrawable drawable = glXGetCurrentDrawable();
-	//glXSwapIntervalEXT( display, drawable, 1);
-
 	// Open the window
 	windowAttribs.border_pixel = BlackPixel(display, screenId);
 	windowAttribs.background_pixel = WhitePixel(display, screenId);
@@ -202,6 +194,20 @@ bool dummy_engine::prepare_engine () {
 	
 	// selecting inputs
 	XSelectInput(display, window, ButtonPressMask );
+
+	// vsync
+	glSwapIntervalEXT = nullptr;
+		glSwapIntervalEXT = (glSwapInterval_t*)glXGetProcAddress((unsigned char*)"glXSwapIntervalEXT");
+
+		if (glSwapIntervalEXT == nullptr && !false)
+		{
+			printf("NOTE: Could not disable VSYNC, glXSwapIntervalEXT() was not found!\n");
+			printf("      Don't worry though, things will still work, it's just the\n");
+			printf("      frame rate will be capped to your monitors refresh rate - javidx9\n");
+		}
+
+		if (glSwapIntervalEXT != nullptr && !false)
+			glSwapIntervalEXT(display, window, 0);
 
 	// Show the window
 	XClearWindow(display, window);
@@ -231,28 +237,15 @@ void dummy_engine::start ()
 	// Redirect Close
 	Atom atomWmDeleteWindow = XInternAtom ( display, "WM_DELETE_WINDOW", False );
 	XSetWMProtocols ( display, window, &atomWmDeleteWindow, 1 );
-	// Create GLX OpenGL context
+	// Create GLX OpenGL context	
 	GLXContext context = glXCreateContext(display, visual, NULL, GL_TRUE);
 	glXMakeCurrent(display, window, context);
 	// lets try to add some opengl things
 	glEnable(GL_TEXTURE_2D);
-	//glGenTextures(1, &glIuffer);
-	//glBindTexture(GL_TEXTURE_2D, glBuffer);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
-
-
-	/*// timeing
-	auto tp1 = std::chrono::system_clock::now();
-	auto tp2 = std::chrono::system_clock::now();
-
-	while (window_active) {
-		tp2 = std::chrono::system_clock::now();
-		std::chrono::duration<float> elapsedTime = tp2 - tp1;
-		tp1 = tp2;
-		float fElapsedTime = elapsedTime.count();
-	*/
+	
 	
 	auto tp1 = std::chrono::system_clock::now();
 	auto tp2 = std::chrono::system_clock::now();
