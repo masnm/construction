@@ -17,6 +17,48 @@
 typedef int(glSwapInterval_t)(Display* dpy, GLXDrawable drawable, int interval);
 static glSwapInterval_t* glSwapIntervalEXT;
 
+
+struct pixel {
+	union {
+		uint32_t n = 0xFF000000;
+		struct {
+			uint8_t r; uint8_t g; uint8_t b; uint8_t a;
+		};
+	};
+
+	pixel () : r(0), g(0), b(0), a(255) {}
+	pixel (uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha = 255) : r(red), g(green), b(blue), a(alpha) {}	
+};
+
+class picture {
+	public:
+		uint32_t picture_widht;
+		uint32_t picture_height;
+
+		pixel* picture_data;
+	
+	public:
+		picture ( uint32_t width, uint32_t height );
+		pixel* get_data ();
+
+};
+
+picture::picture ( uint32_t width, uint32_t height )
+{
+	picture_widht = width;
+	picture_height = height;
+
+	picture_data = new pixel[picture_widht*picture_height];
+}
+
+pixel* picture::get_data ()
+{
+	return picture_data;
+}
+
+
+
+
 class engine {
 
 	private:
@@ -41,6 +83,9 @@ class engine {
 		XSetWindowAttributes window_attributes;
 		XVisualInfo* visual;
 
+	protected:
+		picture* canvus;
+
 	private:
 		GLXContext context;
 
@@ -52,6 +97,8 @@ class engine {
 		bool create_window ( );
 		bool create_opengl ( );
 
+		bool create_canvus ( );
+
 	protected:
 		void sync_hardware ();
 		void engine_thread ();
@@ -62,6 +109,8 @@ class engine {
 	protected:
 		bool delete_opengl ( );
 		bool delete_window ( );
+
+		bool delete_canvus ( );
 
 	protected: // temporary variable
 		std::atomic<bool> running;
@@ -115,6 +164,18 @@ void engine::engine_thread ()
 	if ( !show_window() )
 		return ;
 
+	if ( !create_canvus() )
+		return ;
+
+	// creating screen texture
+	glEnable(GL_TEXTURE_2D);
+	//glGenTextures(1, &glBuffer);
+	//glBindTexture(GL_TEXTURE_2D, glBuffer);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, screen_width, screen_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, canvus->get_data() );
+
 	// timeing, FPS yeahh......
 	auto left_time = std::chrono::system_clock::now ();
 	auto right_time = std::chrono::system_clock::now ();
@@ -136,13 +197,14 @@ void engine::engine_thread ()
 		glClear ( GL_COLOR_BUFFER_BIT );	
 		
 		// draw on canvous
-		glBegin(GL_TRIANGLES);
-			glColor3f(  1.0f,  0.0f, 0.0f);
-			glVertex3f( 0.0f, -1.0f, 0.0f);
-			glColor3f(  0.0f,  1.0f, 0.0f);
-			glVertex3f(-1.0f,  1.0f, 0.0f);
-			glColor3f(  0.0f,  0.0f, 1.0f);
-			glVertex3f( 1.0f,  1.0f, 0.0f);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, screen_width, screen_height, GL_RGBA, GL_UNSIGNED_BYTE, canvus->get_data() );
+
+		// Display texture on screen
+		glBegin(GL_QUADS);
+			glTexCoord2f(0.0, 1.0); glVertex3f(-1.0f, -1.0f, 0.0f);
+			glTexCoord2f(0.0, 0.0); glVertex3f(-1.0f,  1.0f, 0.0f);
+			glTexCoord2f(1.0, 0.0); glVertex3f( 1.0f,  1.0f, 0.0f);
+			glTexCoord2f(1.0, 1.0); glVertex3f( 1.0f, -1.0f, 0.0f);
 		glEnd();	
 		
 		// present the canvous
@@ -152,6 +214,9 @@ void engine::engine_thread ()
 		sprintf ( app_name, "%s %s %.0f", "Failure", "FPS : ", 1/frame_time );
 		XStoreName ( display, window, app_name );
 	}
+
+	if ( !delete_canvus () )
+		return ;
 
 
 	if ( !delete_opengl() )
@@ -261,6 +326,13 @@ bool engine::create_opengl ( )
 	return true;
 }
 
+bool engine::create_canvus ( )
+{
+	canvus = new picture ( screen_width, screen_height );
+
+	return true;
+}
+
 bool engine::show_window ()
 {
 	XClearWindow ( display, window );
@@ -281,6 +353,14 @@ bool engine::delete_window ()
 	XFreeColormap ( display, window_attributes.colormap );
 	XDestroyWindow ( display, window );
 	XCloseDisplay ( display );
+
+	return true;
+}
+
+bool engine::delete_canvus ( )
+{
+	delete[] canvus->picture_data;
+	delete canvus;
 
 	return true;
 }

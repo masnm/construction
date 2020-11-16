@@ -1,4 +1,4 @@
-
+// think about xseticon 
 #include <iostream>
 
 #include "header.h"
