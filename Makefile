@@ -16,3 +16,12 @@ debug:
 	g++ -g -lm main.cpp -lX11 -lGL -lpthread -lstdc++fs -std=c++17
 	gdb ./a.out
 	rm a.out
+t:
+	ctags -R .
+	g++ main.cpp -lX11 -lGL -lpthread -lstdc++fs -std=c++17
+	./a.out
+	vblank_mode=0 ./a.out
+	rm a.out
+git:
+	git add .
+	git commit

@@ -17,6 +17,14 @@
 typedef int(glSwapInterval_t)(Display* dpy, GLXDrawable drawable, int interval);
 static glSwapInterval_t* glSwapIntervalEXT;
 
+template<typename t>
+struct c2d {
+	t x;
+	t y;
+	c2d () : x(0), y(0) {}
+	c2d ( t _x, t _y ) : x(_x), y(_y) {}
+};
+typedef c2d<uint32_t> ui2d;
 
 struct pixel {
 	union {
@@ -26,12 +34,12 @@ struct pixel {
 		};
 	};
 
-	pixel () : r(255), g(0), b(0), a(255) {}
+	pixel () : r(0), g(0), b(0), a(255) {}
 	pixel (uint8_t red, uint8_t green, uint8_t blue, uint8_t alpha = 255) : r(red), g(green), b(blue), a(alpha) {}	
 };
 
 class picture {
-	public:
+	protected:
 		uint32_t picture_widht;
 		uint32_t picture_height;
 
@@ -39,8 +47,9 @@ class picture {
 	
 	public:
 		picture ( uint32_t width, uint32_t height );
+		uint32_t get_width () { return picture_widht; }
+		uint32_t get_height () { return picture_height; }
 		pixel* get_data ();
-
 };
 
 picture::picture ( uint32_t width, uint32_t height )
@@ -94,6 +103,17 @@ class engine {
 		bool start ( );
 
 	protected:
+		virtual bool on_create () = 0;
+		virtual bool on_update () = 0;
+		virtual bool on_delete () = 0;
+
+	protected:
+		void clear ( pixel clear_colour );
+		void clear ();
+		void draw ( uint32_t x, uint32_t y, pixel color );
+		void draw ( ui2d position, pixel color );
+
+	protected:
 		bool create_window ( );
 		bool create_opengl ( );
 
@@ -114,6 +134,10 @@ class engine {
 
 	protected: // temporary variable
 		std::atomic<bool> running;
+
+	protected:
+		//static std::string error_string;
+		std::string error_string;
 };
 
 
@@ -134,6 +158,31 @@ bool engine::create ( uint32_t Screen_Width, uint32_t Screen_Height, uint32_t Pi
 	return true;
 }
 
+void engine::clear ( pixel clear_colour )
+{
+	uint32_t len = canvus->get_width() * canvus->get_height();
+	pixel* p = canvus->get_data();
+	for ( uint32_t i = 0; i<len ; i++ ) p[i] = clear_colour;
+}
+
+void engine::clear ()
+{
+	pixel black = pixel( 0, 0, 0 );
+	uint32_t len = canvus->get_width() * canvus->get_height();
+	pixel* p = canvus->get_data();
+	for ( uint32_t i = 0; i<len ; i++ ) p[i] = black;	
+}
+
+void engine::draw ( uint32_t x, uint32_t y, pixel color )
+{
+	canvus->get_data()[ y * screen_width + x ] = color;
+}
+
+void engine::draw ( ui2d position, pixel color )
+{
+	draw ( position.x, position.y, color );
+}
+
 void engine::sync_hardware ()
 {
 	while ( XPending ( display ) ) {
@@ -145,7 +194,6 @@ void engine::sync_hardware ()
 				XWindowAttributes attribs;
 				XGetWindowAttributes ( display, window, &attribs );
 				glViewport ( 0, 0, attribs.width, attribs.height );
-				std::cout << "Expose event fired" << std::endl;
 				break;
 			case ClientMessage:
 				if ( event.xclient.data.l[0] == delete_window_message ) {
@@ -158,14 +206,20 @@ void engine::sync_hardware ()
 
 void engine::engine_thread ()
 {
-	if ( !create_opengl() )
-		return ;
+	if ( !create_opengl() ) {
+		error_string += "create_opengl failed.\n";
+		running = false;
+	}
 
-	if ( !show_window() )
-		return ;
+	if ( !show_window() ) {
+		error_string += "show_window failed.\n";
+		running = false;
+	}
 
-	if ( !create_canvus() )
-		return ;
+	if ( !create_canvus() ) {
+		error_string += "create_canvus failed.\n";
+		running = false;
+	}
 
 	// creating screen texture
 	glEnable(GL_TEXTURE_2D);
@@ -183,6 +237,11 @@ void engine::engine_thread ()
 
 	glClearColor ( 0.0f, 0.0f, 0.0f, 1.0f );
 
+	if ( !on_create() ) {
+		running = false;
+		error_string += "on_create failed.\n";
+	}
+
 	while ( running ) {
 
 		auto right_time = std::chrono::system_clock::now ();
@@ -192,6 +251,11 @@ void engine::engine_thread ()
 		
 		sync_hardware ();
 
+		if ( !on_update() ) {
+			running = false;
+			error_string += "on_update failed.\n";
+			break;
+		}
 
 		// clear the canvous
 		glClear ( GL_COLOR_BUFFER_BIT );	
@@ -215,12 +279,19 @@ void engine::engine_thread ()
 		XStoreName ( display, window, app_name );
 	}
 
-	if ( !delete_canvus () )
-		return ;
+	if ( !on_delete() )
+		error_string += "on_delete failed.\n";
 
+	if ( !delete_canvus () )
+		error_string += "delete_canvus failed.\n";
 
 	if ( !delete_opengl() )
-		return ;
+		error_string += "delete_opengl failed.\n";
+
+	// printing the errors
+	if ( !error_string.empty() ) {
+		std::cout << error_string << std::endl;
+	}
 
 }
 
@@ -248,7 +319,7 @@ bool engine::create_window ()
 
 	display = XOpenDisplay ( NULL );
 	if ( display == NULL ) {
-		std::cout << "Failed to open display" << std::endl;
+		error_string += "Failed to open display.\n";
 		return false;
 	}
 	screen = DefaultScreenOfDisplay ( display );
@@ -257,11 +328,9 @@ bool engine::create_window ()
 	GLint major_glx, minor_glx;
 	glXQueryVersion ( display, &major_glx, &minor_glx );
 	if ( major_glx <= 1 && minor_glx < 2 ) {
-		std::cout << "GLX 1.2 or greater is requird" << std::endl;
+		error_string += "GLX 1.2 or greater is requird.\n";
 		XCloseDisplay ( display );
 		return false;
-	} else {
-		std::cout << "GLX version: " << major_glx << "." << minor_glx << std::endl;
 	}
 
 	// this is the minimim visuals for now
@@ -282,7 +351,7 @@ bool engine::create_window ()
 	visual = glXChooseVisual ( display, screen_id, glx_attributes );
 
 	if ( visual == NULL ) {
-		std::cout << "Failed to create correct visual window." << std::endl;
+		error_string += "Failed to create correct visual window.\n";
 		XCloseDisplay ( display );
 		return false;
 	}
@@ -304,10 +373,10 @@ bool engine::create_opengl ( )
 	context = glXCreateContext(display, visual, NULL, GL_TRUE);
 	glXMakeCurrent(display, window, context);
 
-	std::cout << "GL Vendor: " << glGetString(GL_VENDOR) << "\n";
-	std::cout << "GL Renderer: " << glGetString(GL_RENDERER) << "\n";
-	std::cout << "GL Version: " << glGetString(GL_VERSION) << "\n";
-	std::cout << "GL Shading Language: " << glGetString(GL_SHADING_LANGUAGE_VERSION) << "\n";
+//	std::cout << "GL Vendor: " << glGetString(GL_VENDOR) << "\n";
+//	std::cout << "GL Renderer: " << glGetString(GL_RENDERER) << "\n";
+//	std::cout << "GL Version: " << glGetString(GL_VERSION) << "\n";
+//	std::cout << "GL Shading Language: " << glGetString(GL_SHADING_LANGUAGE_VERSION) << "\n";
 
 	XStoreName ( display, window, app_name );
 
@@ -359,7 +428,8 @@ bool engine::delete_window ()
 
 bool engine::delete_canvus ( )
 {
-	delete[] canvus->picture_data;
+	pixel* p = canvus->get_data();
+	delete[] p;
 	delete canvus;
 
 	return true;
