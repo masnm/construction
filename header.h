@@ -108,6 +108,10 @@ class engine {
 		virtual bool on_delete () = 0;
 
 	protected:
+		uint32_t get_screen_width () { return screen_width; }
+		uint32_t get_screen_height () { return screen_height; }
+
+	protected:
 		void clear ( pixel clear_colour );
 		void clear ();
 		void draw ( uint32_t x, uint32_t y, pixel color );
@@ -132,12 +136,15 @@ class engine {
 
 		bool delete_canvus ( );
 
-	protected: // temporary variable
+	protected:
 		std::atomic<bool> running;
 
 	protected:
 		//static std::string error_string;
 		std::string error_string;
+
+	protected:	 // temporary variable
+		std::vector<char> keys_pressed;
 };
 
 
@@ -189,6 +196,10 @@ void engine::sync_hardware ()
 
 		XNextEvent ( display, &event );
 
+		int len;
+		char str[25];
+		KeySym keysym;
+
 		switch ( event.type ) {
 			case Expose:
 				XWindowAttributes attribs;
@@ -197,6 +208,19 @@ void engine::sync_hardware ()
 				break;
 			case ClientMessage:
 				if ( event.xclient.data.l[0] == delete_window_message ) {
+					running = false;
+				}
+				break;
+			case KeymapNotify:
+				XRefreshKeyboardMapping(&event.xmapping);
+				break;
+			case KeyPress:
+				len = XLookupString(&event.xkey, str, 25, &keysym, NULL);
+				if (len > 0) {
+					//std::cout << "Key pressed: " << str << " - " << len << " - " << keysym <<'\n';
+					for ( int i = 0; i<len; i++ ) keys_pressed.push_back(str[i]);
+				}
+				if (keysym == XK_Escape) {
 					running = false;
 				}
 				break;
