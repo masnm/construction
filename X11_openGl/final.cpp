@@ -20,7 +20,6 @@ static int attributes[] = { GLX_RGBA, GLX_DEPTH_SIZE, 24, GLX_DOUBLEBUFFER, None
 #define WIDTH           800 //300 
 #define HEIGHT          600 //200 
  
- 
 /* OpenGL globals, defines, and prototypes */ 
 GLfloat latitude, longitude, latinc, longinc; 
 GLdouble radius; 
@@ -42,8 +41,7 @@ static Bool WaitForMapNotify(Display *d, XEvent *e, char *arg)
     return GL_FALSE; 
 } 
  
-int 
-main(int argc, char **argv) 
+int main ( int argc, char **argv )
 { 
     XVisualInfo    *vi; 
     Colormap        cmap; 
@@ -94,19 +92,29 @@ main(int argc, char **argv)
  
     XMapWindow(dpy, glwin); 
     XIfEvent(dpy,  &event,  WaitForMapNotify,  (char *)glwin); 
-     
+   
     initializeGL(WIDTH, HEIGHT); 
     resize(WIDTH, HEIGHT); 
-    
+
+    // redirect window delete
+    Atom atomWmDeleteWindow = XInternAtom ( dpy, "WM_DELETE_WINDOW", False );
+    XSetWMProtocols ( dpy, glwin, &atomWmDeleteWindow, 1 );
+ 
     /* Animation loop */ 
-    while (1) { 
+    bool running = true;
+    while ( running ) {
     KeySym key; 
  
     while (XPending(dpy)) { 
         XNextEvent(dpy, &event); 
         switch (event.type) { 
+            case ClientMessage:
+                if (event.xclient.data.l[0] == atomWmDeleteWindow) {
+                    running = false;
+                }
+                break;
         case KeyPress: 
-                XLookupString((XKeyEvent *)&event, NULL, 0, &key, NULL); 
+            XLookupString((XKeyEvent *)&event, NULL, 0, &key, NULL); 
         switch (key) { 
         case XK_Left: 
             longinc += 0.1; 
@@ -128,7 +136,7 @@ main(int argc, char **argv)
         } 
     } 
     drawScene(); 
-    } 
+    }
     return 0;
 } 
  
@@ -179,67 +187,65 @@ GLvoid createObjects()
  
 GLvoid initializeGL(GLsizei width, GLsizei height) 
 { 
-    GLfloat    maxObjectSize, aspect; 
-    GLdouble    near_plane, far_plane; 
- 
-    glClearIndex( (GLfloat)BLACK_INDEX); 
-    glClearDepth( 1.0 ); 
- 
-    glEnable(GL_DEPTH_TEST); 
- 
-    glMatrixMode( GL_PROJECTION ); 
-    aspect = (GLfloat) width / height; 
-    gluPerspective( 45.0, aspect, 3.0, 7.0 ); 
-    glMatrixMode( GL_MODELVIEW ); 
- 
-    near_plane = 3.0; 
-    far_plane = 7.0; 
-    maxObjectSize = 3.0F; 
-    radius = near_plane + maxObjectSize/2.0; 
- 
-    latitude = 0.0F; 
-    longitude = 0.0F; 
-    latinc = 6.0F; 
-    longinc = 2.5F; 
- 
-    createObjects(); 
+	GLfloat maxObjectSize, aspect; 
+	GLdouble near_plane, far_plane; 
+	
+	glClearIndex( (GLfloat)BLACK_INDEX); 
+	glClearDepth( 1.0 ); 
+	
+	glEnable(GL_DEPTH_TEST); 
+	
+	glMatrixMode( GL_PROJECTION ); 
+	aspect = (GLfloat) width / height; 
+	gluPerspective( 45.0, aspect, 3.0, 7.0 ); 
+	glMatrixMode( GL_MODELVIEW ); 
+	
+	near_plane = 3.0; 
+	far_plane = 7.0; 
+	maxObjectSize = 3.0F; 
+	radius = near_plane + maxObjectSize/2.0; 
+	
+	latitude = 0.0F; 
+	longitude = 0.0F; 
+	latinc = 6.0F; 
+	longinc = 2.5F; 
+	
+	createObjects(); 
 } 
  
-void polarView(GLdouble radius, GLdouble twist, GLdouble latitude, 
-           GLdouble longitude) 
+void polarView(GLdouble radius, GLdouble twist, GLdouble latitude, GLdouble longitude) 
 { 
-    glTranslated(0.0, 0.0, -radius); 
-    glRotated(-twist, 0.0, 0.0, 1.0); 
-    glRotated(-latitude, 1.0, 0.0, 0.0); 
-    glRotated(longitude, 0.0, 0.0, 1.0);      
- 
+	glTranslated(0.0, 0.0, -radius); 
+	glRotated(-twist, 0.0, 0.0, 1.0); 
+	glRotated(-latitude, 1.0, 0.0, 0.0); 
+	glRotated(longitude, 0.0, 0.0, 1.0);      
 } 
  
 GLvoid drawScene(GLvoid) 
 { 
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT ); 
- 
-    glPushMatrix(); 
- 
-        latitude += latinc; 
-        longitude += longinc; 
- 
-        polarView( radius, 0, latitude, longitude ); 
- 
-        glIndexi(RED_INDEX); 
-        glCallList(CONE); 
- 
-        glIndexi(BLUE_INDEX); 
-        glCallList(GLOBE); 
- 
-        glIndexi(GREEN_INDEX); 
-        glPushMatrix(); 
-            glTranslatef(0.8F, -0.65F, 0.0F); 
-            glRotatef(30.0F, 1.0F, 0.5F, 1.0F); 
-            glCallList(CYLINDER); 
-        glPopMatrix(); 
- 
-    glPopMatrix(); 
- 
-    SWAPBUFFERS; 
+	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT ); 
+
+	glPushMatrix(); 
+
+		latitude += latinc; 
+		longitude += longinc; 
+
+		polarView( radius, 0, latitude, longitude ); 
+
+		glIndexi(RED_INDEX); 
+		glCallList(CONE); 
+
+		glIndexi(BLUE_INDEX); 
+		glCallList(GLOBE); 
+
+		glIndexi(GREEN_INDEX); 
+		glPushMatrix(); 
+			glTranslatef(0.8F, -0.65F, 0.0F); 
+			glRotatef(30.0F, 1.0F, 0.5F, 1.0F); 
+			glCallList(CYLINDER); 
+		glPopMatrix(); 
+
+	glPopMatrix(); 
+
+	SWAPBUFFERS; 
 }
